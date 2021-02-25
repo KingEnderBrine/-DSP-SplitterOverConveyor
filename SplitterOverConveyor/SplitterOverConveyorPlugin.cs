@@ -173,20 +173,34 @@ namespace SplitterOverConveyor
             for (var i = 0; i < 4; i++)
             {
                 var slotPose = slotPoses[i];
-                var snappedPos = playerAction.planetAux.mainGrid.SnapTo(slotPose.position);
+                var snappedPos = playerAction.planetAux.Snap(playerAction.previewPose.position + playerAction.previewPose.rotation * (slotPose.position + slotPose.forward * 1.5F), false, false);
                 var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPos, 0.01F, playerAction._tmp_ids);
                 var entityData = EntityData.Null;
                 var validBelt = false;
                 var isOutput = false;
                 var isBelt = false;
-                if (count == 1)
+
+                if (count == 1 && playerAction._tmp_ids[0] > 0)
                 {
                     entityData = playerAction.factory.GetEntityData(playerAction._tmp_ids[0]);
                     isBelt = playerAction.ObjectIsBelt(entityData.id);
                     if (isBelt)
                     {
-                        validBelt = true;
-                        //isOutput;
+                        //TODO
+                        var slotForward = playerAction.previewPose.rotation * slotPose.forward;
+                        var beltForward = entityData.rot * Vector3.forward;
+                        var dot = Vector3.Dot(slotForward, beltForward);
+                        InstanceLogger.LogError(dot);
+                        if (dot > 0.75)
+                        {
+                            validBelt = true;
+                            isOutput = true;
+                        }
+                        else if (dot < 0.75)
+                        {
+                            validBelt = true;
+                            isOutput = false;
+                        }
                     }
                 }
 
@@ -194,7 +208,7 @@ namespace SplitterOverConveyor
                 {
                     slot = i,
                     entityData = entityData,
-                    slotPos = slotPoses[i].position,
+                    slotPos = slotPose.position,
                     isOutput = isOutput,
                     validBelt = validBelt,
                     isBelt = isBelt
@@ -204,6 +218,10 @@ namespace SplitterOverConveyor
 
         private static int CheckSplitterCollides(PlayerAction_Build playerAction, BuildPreview buildPreview, ColliderData buildCollider, int layerMask)
         {
+            if (playerAction.castObjId < 0)
+            {
+                return -1;
+            }
             if (!buildPreview.desc.isSplitter)
             {
                 return -1;
@@ -228,11 +246,11 @@ namespace SplitterOverConveyor
             }
 
             GetAdjacentBuildingsNonAlloc(playerAction, buildPreview, splitterAdjacentBuildings);
-            if (splitterAdjacentBuildings.Count(belt => belt.validBelt) + (middleBeltExists ? 1 : 0) >= overlapCount)
+            if (splitterAdjacentBuildings.Count(belt => belt.validBelt) + (middleBeltExists ? 1 : 0) > overlapCount)
             {
-                return (int)EBuildCondition.Collide + 1;
+                return (int)EBuildCondition.Collide;
             }
-            
+
             var colliderIds = new int[overlapCount];
             for (var i = 0; i < overlapCount; i++)
             {
@@ -249,9 +267,7 @@ namespace SplitterOverConveyor
                 {
                     continue;
                 }
-                InstanceLogger.LogInfo(string.Join(", ", splitterAdjacentBuildings.Select(el => el.entityData.id.ToString()).ToArray()));
-                InstanceLogger.LogWarning(colliderIds[i]);
-                return (int)EBuildCondition.Collide + 2;
+                return (int)EBuildCondition.Collide;
             }
 
             requiredBelts.Clear();
@@ -265,12 +281,12 @@ namespace SplitterOverConveyor
 
                 if (!adjacentBuilding.isBelt && colliderIds.Contains(adjacentBuilding.entityData.colliderId))
                 {
-                    return (int)EBuildCondition.Collide + 3;
+                    return (int)EBuildCondition.Collide;
                 }
 
                 if (!adjacentBuilding.validBelt)
                 {
-                    return (int)EBuildCondition.Collide + 4;
+                    return (int)EBuildCondition.Collide;
                 }
 
                 if (requiredBelts.TryGetValue(adjacentBuilding.entityData.protoId, out var count))
