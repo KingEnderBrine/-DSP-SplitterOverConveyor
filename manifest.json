@@ -1,0 +1,9 @@
+{
+    "name": "SplitterOverConveyor",
+    "version_number": "1.0.1",
+    "website_url": "https://github.com/KingEnderBrine/-DSP-SplitterOverConveyor",
+    "description": "Allows you to place splitter on top of conveyor belts, this will automatically connect everything.",
+    "dependencies": [
+        "xiaoye97-BepInEx-5.4.5"
+    ]
+}
