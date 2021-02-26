@@ -92,79 +92,48 @@ namespace SplitterOverConveyor
 
         private static void FillSplitterPrebuildData(PlayerAction_Build playerAction, ref PrebuildData prebuildData, BuildPreview buildPreview)
         {
-            //if (!playerAction.ObjectIsSplitter(buildPreview.objId))
-            //{
-            //    return;
-            //}
-            ////TODOOO
-            //if (playerAction.castObjId <= 0 || !playerAction.ObjectIsBelt(playerAction.castObjId))
-            //{
-            //    return;
-            //}
-            //
-            //var castEntityData = playerAction.factory.GetEntityData(playerAction.castObjId);
-            //var itemProto = LDB.items.Select(castEntityData.protoId);
-            //var objectPose = playerAction.GetObjectPose(playerAction.castObjId);
-            //
-            ////TODOOO
-            //GetAdjacentToSlotsBuildings(playerAction.factory, castEntityData.id);
-            //var localGates = playerAction.GetLocalGates(buildPreview.objId);
-            //
-            //playerAction.DoDestructObject(castEntityData.id, out _);
-            //
-            //for (var i = 0; i < connections.Length; i++)
-            //{
-            //    var connection = connections[i];
-            //    if (connection == 0)
-            //    {
-            //        continue;
-            //    }
-            //
-            //    var connectionEntityData = playerAction.factory.GetEntityData(connection);
-            //
-            //    //Slot detection mostly coppied from `DetermineBuildPreviews`
-            //    //Renamed what I could to meaningful names
-            //    var entityDirection = playerAction.cursorTarget - connectionEntityData.pos;
-            //    var num1 = (playerAction.altitude * 1.333333F + playerAction.factory.planet.realRadius + 0.2F) - playerAction.cursorTarget.magnitude;
-            //    var num2 = 0.0f;
-            //    var gatePos = Vector3.zero;
-            //    var slot = -1;
-            //    for (int index = 0; index < localGates.Length; ++index)
-            //    {
-            //        var startGatePos = objectPose.position + objectPose.rotation * localGates[index].position;
-            //        var forwardDirection = objectPose.rotation * localGates[index].forward;
-            //        var endGatePos = startGatePos + forwardDirection * 2f;
-            //        var normalized = (endGatePos - objectPose.position).normalized;
-            //        var num3 = 0.25f - Mathf.Abs((num1 - localGates[index].position.y) * 0.25F);
-            //        var num4 = Vector3.Dot(-entityDirection.normalized, normalized) + num3;
-            //        if (num4 > num2)
-            //        {
-            //            num2 = num4;
-            //            slot = index;
-            //            gatePos = startGatePos;
-            //        }
-            //    }
-            //
-            //    if (slot == -1)
-            //    {
-            //        continue;
-            //    }
-            //
-            //    var connectionPrebuildData = new PrebuildData
-            //    {
-            //        protoId = (short)itemProto.ID,
-            //        modelIndex = (short)itemProto.prefabDesc.modelIndex,
-            //        pos = gatePos,
-            //        pos2 = Vector3.zero,
-            //        rot = prebuildData.rot,
-            //        rot2 = Quaternion.identity,
-            //    };
-            //
-            //    var objId = -playerAction.factory.AddPrebuildDataWithComponents(connectionPrebuildData);
-            //    //First slot in belts is always output
-            //    playerAction.factory.WriteObjectConn(buildPreview.objId, slot, i == 0, objId, i == 0 ? 1 : 0);
-            //    playerAction.factory.WriteObjectConn(connection, i == 0 ? 1 : 0, i != 0, objId, i == 0 ? 0 : 1);
-            //}
+            if (!playerAction.ObjectIsSplitter(buildPreview.objId))
+            {
+                return;
+            }
+            var middleBeltExists = playerAction.castObjId > 0;
+            if (middleBeltExists && !playerAction.ObjectIsBelt(playerAction.castObjId))
+            {
+                return;
+            }
+            
+            GetAdjacentBuildingsNonAlloc(playerAction, buildPreview, splitterAdjacentBuildings);
+            if (middleBeltExists)
+            {
+                playerAction.DoDestructObject(playerAction.castObjId, out _);
+            }
+
+            for (var i = 0; i < 4; i++)
+            {
+                var adjacentBuilding = splitterAdjacentBuildings[i];
+                if (adjacentBuilding.entityData.isNull)
+                {
+                    continue;
+                }
+                if (!adjacentBuilding.validBelt)
+                {
+                    continue;
+                }
+                var connectionPrebuildData = new PrebuildData
+                {
+                    protoId = adjacentBuilding.entityData.protoId,
+                    modelIndex = adjacentBuilding.entityData.modelIndex,
+                    pos = adjacentBuilding.slotPos,
+                    pos2 = Vector3.zero,
+                    rot = prebuildData.rot,
+                    rot2 = Quaternion.identity,
+                };
+            
+                var objId = -playerAction.factory.AddPrebuildDataWithComponents(connectionPrebuildData);
+                //First slot in belts is always output
+                playerAction.factory.WriteObjectConn(buildPreview.objId, adjacentBuilding.slot, !adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 0 : 1);
+                playerAction.factory.WriteObjectConn(adjacentBuilding.entityData.id, adjacentBuilding.isOutput ? 0 : 1, adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 1 : 0);
+            }
         }
 
         private static void GetAdjacentBuildingsNonAlloc(PlayerAction_Build playerAction, BuildPreview buildPreview, AdjacentBuilding[] splitterAdjacentBuildings)
@@ -173,34 +142,38 @@ namespace SplitterOverConveyor
             for (var i = 0; i < 4; i++)
             {
                 var slotPose = slotPoses[i];
-                var snappedPos = playerAction.planetAux.Snap(playerAction.previewPose.position + playerAction.previewPose.rotation * (slotPose.position + slotPose.forward * 1.5F), false, false);
-                var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPos, 0.01F, playerAction._tmp_ids);
+                var snappedPos = playerAction.planetAux.Snap(playerAction.previewPose.position + playerAction.previewPose.rotation * (slotPose.position + slotPose.forward * 1.3F), false, false);
+                var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPos, 0.1F, playerAction._tmp_ids);
                 var entityData = EntityData.Null;
                 var validBelt = false;
                 var isOutput = false;
                 var isBelt = false;
 
+                var objId = 0;
+
                 if (count == 1 && playerAction._tmp_ids[0] > 0)
                 {
-                    entityData = playerAction.factory.GetEntityData(playerAction._tmp_ids[0]);
+                    objId = playerAction._tmp_ids[0];
+                    
+                }
+                if (count == 2 && buildPreview.objId != 0)
+                {
+                    if (Mathf.Abs(playerAction._tmp_ids[0]) == Mathf.Abs(buildPreview.objId))
+                    {
+                        objId = playerAction._tmp_ids[1];
+                    }
+                    else if (Mathf.Abs(playerAction._tmp_ids[1]) == Mathf.Abs(buildPreview.objId))
+                    {
+                        objId = playerAction._tmp_ids[0];
+                    }
+                }
+                if (objId != 0)
+                {
+                    entityData = playerAction.factory.GetEntityData(objId);
                     isBelt = playerAction.ObjectIsBelt(entityData.id);
                     if (isBelt)
                     {
-                        //TODO
-                        var slotForward = playerAction.previewPose.rotation * slotPose.forward;
-                        var beltForward = entityData.rot * Vector3.forward;
-                        var dot = Vector3.Dot(slotForward, beltForward);
-                        InstanceLogger.LogError(dot);
-                        if (dot > 0.75)
-                        {
-                            validBelt = true;
-                            isOutput = true;
-                        }
-                        else if (dot < 0.75)
-                        {
-                            validBelt = true;
-                            isOutput = false;
-                        }
+                        ValidateBelt(playerAction, slotPose, entityData, out validBelt, out isOutput);
                     }
                 }
 
@@ -208,12 +181,78 @@ namespace SplitterOverConveyor
                 {
                     slot = i,
                     entityData = entityData,
-                    slotPos = slotPose.position,
+                    slotPos = playerAction.previewPose.position + playerAction.previewPose.rotation * slotPose.position,
                     isOutput = isOutput,
                     validBelt = validBelt,
                     isBelt = isBelt
                 };
             }
+        }
+
+        private static void ValidateBelt(PlayerAction_Build playerAction, Pose slotPose, EntityData entityData, out bool validBelt, out bool isOutput)
+        {
+            playerAction.factory.ReadObjectConn(entityData.id, 0, out _, out var outputObjId, out _);
+
+            if (playerAction.castObjId > 0 && outputObjId == playerAction.castObjId)
+            {
+                validBelt = true;
+                isOutput = false;
+                return;
+            }
+
+            playerAction.factory.ReadObjectConn(entityData.id, 1, out _, out var inputObjId, out _);
+            
+            if (playerAction.castObjId > 0 && inputObjId == playerAction.castObjId)
+            {
+                validBelt = true;
+                isOutput = true;
+                return;
+            }
+
+            if (outputObjId <= 0 && inputObjId <= 0)
+            {
+                validBelt = false;
+                isOutput = false;
+                return;
+            }
+
+            var slotForward = playerAction.previewPose.rotation * slotPose.forward;
+            //TODO: objId can be less than 0 in case of prebuilds
+            var outputObjData = playerAction.factory.GetEntityData(outputObjId);
+            var outputForward = (outputObjData.pos - entityData.pos).normalized;
+            var dot = Vector3.Dot(slotForward, outputForward);
+            if (dot > 0.5)
+            {
+                validBelt = true;
+                isOutput = false;
+                return;
+            }
+            else if (dot < -0.5)
+            {
+                validBelt = true;
+                isOutput = true;
+                return;
+            }
+
+            var inputObjData = playerAction.factory.GetEntityData(inputObjId);
+            
+            var inputForward = (inputObjData.pos - entityData.pos).normalized;
+            dot = Vector3.Dot(slotForward, inputForward);
+            if (dot > 0.5)
+            {
+                validBelt = true;
+                isOutput = true;
+                return;
+            }
+            else if (dot < -0.5)
+            {
+                validBelt = true;
+                isOutput = false;
+                return;
+            }
+
+            validBelt = false;
+            isOutput = false;
         }
 
         private static int CheckSplitterCollides(PlayerAction_Build playerAction, BuildPreview buildPreview, ColliderData buildCollider, int layerMask)
