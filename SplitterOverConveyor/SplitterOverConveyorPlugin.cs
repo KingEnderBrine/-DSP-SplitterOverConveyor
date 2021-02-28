@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace SplitterOverConveyor
 {
-    [BepInPlugin(GUID, "Splitter Over Conveyor", "1.1.0")]
+    [BepInPlugin(GUID, "Splitter Over Conveyor", "2.0.0")]
     public class SplitterOverConveyorPlugin : BaseUnityPlugin
     {
         public const string GUID = "KingEnderBrine.SplitterOverConveyor";
@@ -123,16 +123,18 @@ namespace SplitterOverConveyor
                 {
                     protoId = adjacentBuilding.entityData.protoId,
                     modelIndex = adjacentBuilding.entityData.modelIndex,
-                    pos = adjacentBuilding.slotPos,
+                    pos = playerAction.previewPose.position + playerAction.previewPose.rotation * adjacentBuilding.slotPose.position,
                     pos2 = Vector3.zero,
-                    rot = prebuildData.rot,
+                    rot = prebuildData.rot * adjacentBuilding.slotPose.rotation,
                     rot2 = Quaternion.identity,
                 };
             
                 var objId = -playerAction.factory.AddPrebuildDataWithComponents(connectionPrebuildData);
-                //First slot in belts is always output
-                playerAction.factory.WriteObjectConn(buildPreview.objId, adjacentBuilding.slot, !adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 0 : 1);
-                playerAction.factory.WriteObjectConn(adjacentBuilding.entityData.id, adjacentBuilding.isOutput ? 0 : 1, adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 1 : 0);
+                //TODO: 0 is not always output for belt, change slot. (should be fine for newly placed belts, needs testing)
+                InstanceLogger.LogWarning($"Slot {adjacentBuilding.splitterSlot} {adjacentBuilding.beltSlot}");
+                playerAction.factory.WriteObjectConn(buildPreview.objId, adjacentBuilding.splitterSlot, !adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 0 : 1);
+
+                //playerAction.factory.WriteObjectConn(adjacentBuilding.entityData.id, adjacentBuilding.beltSlot, adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 1 : 0);
             }
         }
 
@@ -142,12 +144,13 @@ namespace SplitterOverConveyor
             for (var i = 0; i < 4; i++)
             {
                 var slotPose = slotPoses[i];
-                var snappedPos = playerAction.planetAux.Snap(playerAction.previewPose.position + playerAction.previewPose.rotation * (slotPose.position + slotPose.forward * 1.3F), false, false);
+                var snappedPos = playerAction.planetAux.Snap(playerAction.previewPose.position + playerAction.previewPose.rotation * (slotPose.position + slotPose.forward * PlanetGrid.kAltGrid), false, false);
                 var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPos, 0.1F, playerAction._tmp_ids);
                 var entityData = EntityData.Null;
                 var validBelt = false;
                 var isOutput = false;
                 var isBelt = false;
+                var beltSlot = -1;
 
                 var objId = 0;
 
@@ -169,91 +172,127 @@ namespace SplitterOverConveyor
                 }
                 if (objId != 0)
                 {
+                    //TODO objId can be < 0 which will throw an exception
                     entityData = playerAction.factory.GetEntityData(objId);
                     isBelt = playerAction.ObjectIsBelt(entityData.id);
                     if (isBelt)
                     {
-                        ValidateBelt(playerAction, slotPose, entityData, out validBelt, out isOutput);
+                        ValidateBelt(playerAction, slotPose, entityData, out validBelt, out isOutput, out beltSlot);
                     }
                 }
 
                 splitterAdjacentBuildings[i] = new AdjacentBuilding
                 {
-                    slot = i,
+                    splitterSlot = i,
                     entityData = entityData,
-                    slotPos = playerAction.previewPose.position + playerAction.previewPose.rotation * slotPose.position,
+                    slotPose = slotPose,
                     isOutput = isOutput,
                     validBelt = validBelt,
-                    isBelt = isBelt
+                    isBelt = isBelt,
+                    beltSlot = beltSlot
                 };
             }
         }
 
-        private static void ValidateBelt(PlayerAction_Build playerAction, Pose slotPose, EntityData entityData, out bool validBelt, out bool isOutput)
+        private static void ValidateBelt(PlayerAction_Build playerAction, Pose slotPose, EntityData entityData, out bool validBelt, out bool isOutput, out int beltSlot)
         {
-            playerAction.factory.ReadObjectConn(entityData.id, 0, out _, out var outputObjId, out _);
-
-            if (playerAction.castObjId > 0 && outputObjId == playerAction.castObjId)
-            {
-                validBelt = true;
-                isOutput = false;
-                return;
-            }
-
-            playerAction.factory.ReadObjectConn(entityData.id, 1, out _, out var inputObjId, out _);
-            
-            if (playerAction.castObjId > 0 && inputObjId == playerAction.castObjId)
-            {
-                validBelt = true;
-                isOutput = true;
-                return;
-            }
-
-            if (outputObjId <= 0 && inputObjId <= 0)
-            {
-                validBelt = false;
-                isOutput = false;
-                return;
-            }
-
-            var slotForward = playerAction.previewPose.rotation * slotPose.forward;
-            //TODO: objId can be less than 0 in case of prebuilds
-            var outputObjData = playerAction.factory.GetEntityData(outputObjId);
-            var outputForward = (outputObjData.pos - entityData.pos).normalized;
-            var dot = Vector3.Dot(slotForward, outputForward);
-            if (dot > 0.5)
-            {
-                validBelt = true;
-                isOutput = false;
-                return;
-            }
-            else if (dot < -0.5)
-            {
-                validBelt = true;
-                isOutput = true;
-                return;
-            }
-
-            var inputObjData = playerAction.factory.GetEntityData(inputObjId);
-            
-            var inputForward = (inputObjData.pos - entityData.pos).normalized;
-            dot = Vector3.Dot(slotForward, inputForward);
-            if (dot > 0.5)
-            {
-                validBelt = true;
-                isOutput = true;
-                return;
-            }
-            else if (dot < -0.5)
-            {
-                validBelt = true;
-                isOutput = false;
-                return;
-            }
-
-            validBelt = false;
+            beltSlot = -1;
             isOutput = false;
+            validBelt = false;
+
+            //var beltGates = playerAction.GetLocalGates(entityData.id);
+            var beltPose = playerAction.GetObjectPose(entityData.id);
+            var slotDirection = playerAction.previewPose.rotation * slotPose.forward;
+
+            var dotForward = 0.75f;
+            var dotBackward = -0.75f;
+            var forwardSlot = -1;
+            var backwardSlot = -1;
+
+            for (var i = 0; i < playerAction.belt_slots.Length; i++)
+            {
+                var beltSlotPose = playerAction.belt_slots[i].GetTransformedBy(beltPose);
+                var dotResult = Vector3.Dot(slotDirection.normalized, beltSlotPose.forward.normalized);
+                if (dotResult > dotForward)
+                {
+                    dotForward = dotResult;
+                    forwardSlot = i;
+                }
+                if (dotResult < dotBackward)
+                {
+                    dotBackward = dotResult;
+                    beltSlot = backwardSlot = i;
+                }
+                playerAction.factory.ReadObjectConn(entityData.id, i, out var io, out var oi, out _);
+                InstanceLogger.LogWarning($"{i} {io} {oi} {dotResult}");
+            }
+            InstanceLogger.LogWarning($"{forwardSlot} {backwardSlot} {beltPose.rotation} {beltPose.forward}");
+
+            playerAction.factory.ReadObjectConn(entityData.id, backwardSlot, out var backwardIsOutput, out var backwardObjId, out _);
+            if (backwardObjId != 0)
+            {
+                validBelt = true;
+                isOutput = !backwardIsOutput;
+                return;
+            }
+
+            playerAction.factory.ReadObjectConn(entityData.id, forwardSlot, out var forwardIsOutput, out var forwardObjId, out _);
+            if (forwardObjId == 0)
+            {
+                return;
+            }
+
+            for (int index = 0; index < playerAction.belt_slots.Length; ++index)
+            {
+                if (index == forwardSlot || index == backwardSlot)
+                {
+                    continue;
+                }
+                playerAction.factory.ReadObjectConn(entityData.id, index, out _, out var otherObjId, out _);
+                if (otherObjId != 0)
+                {
+                    return;
+                }
+            }
+
+            validBelt = true;
+            isOutput = forwardIsOutput;
+
+            //var slotForward = playerAction.previewPose.rotation * slotPose.forward;
+            //var outputPose = playerAction.GetObjectPose(forwardObjId);
+            //var outputForward = (outputPose.position - entityData.pos).normalized;
+            //var dot = Vector3.Dot(slotForward, outputForward);
+            //if (dot > 0.5)
+            //{
+            //    validBelt = true;
+            //    isOutput = false;
+            //    return;
+            //}
+            //else if (dot < -0.5)
+            //{
+            //    validBelt = true;
+            //    isOutput = true;
+            //    return;
+            //}
+            //
+            //var inputPose = playerAction.GetObjectPose(backwardObjId);
+            //
+            //var inputForward = (inputPose.position - entityData.pos).normalized;
+            //dot = Vector3.Dot(slotForward, inputForward);
+            //if (dot > 0.5)
+            //{
+            //    validBelt = true;
+            //    isOutput = true;
+            //    return;
+            //}
+            //else if (dot < -0.5)
+            //{
+            //    validBelt = true;
+            //    isOutput = false;
+            //    return;
+            //}
         }
+
 
         private static int CheckSplitterCollides(PlayerAction_Build playerAction, BuildPreview buildPreview, ColliderData buildCollider, int layerMask)
         {
@@ -275,10 +314,10 @@ namespace SplitterOverConveyor
             var castEntityData = playerAction.factory.GetEntityData(playerAction.castObjId);
 
             var overlapCount = Physics.OverlapBoxNonAlloc(buildCollider.pos, buildCollider.ext, playerAction._tmp_cols, buildCollider.q, layerMask, QueryTriggerInteraction.Collide);
-            if (overlapCount == 0)
-            {
-                return 0;
-            }
+            //if (overlapCount == 0)
+            //{
+            //    return 0;
+            //}
             if (overlapCount > 4 + (middleBeltExists ? 1 : 0))
             {
                 return (int)EBuildCondition.Collide;
@@ -325,7 +364,7 @@ namespace SplitterOverConveyor
 
                 if (!adjacentBuilding.validBelt)
                 {
-                    return (int)EBuildCondition.Collide;
+                    return (int)EBuildCondition.BeltCannotConnectToBuilding;
                 }
 
                 if (requiredBelts.TryGetValue(adjacentBuilding.entityData.protoId, out var count))

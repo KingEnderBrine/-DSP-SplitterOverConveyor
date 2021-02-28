@@ -9,10 +9,11 @@ namespace SplitterOverConveyor
     public struct AdjacentBuilding
     {
         public bool validBelt;
-        public int slot;
-        public Vector3 slotPos;
+        public int splitterSlot;
+        public Pose slotPose;
         public bool isOutput;
         public bool isBelt;
+        public int beltSlot;
         public EntityData entityData;
     }
 }
