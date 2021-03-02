@@ -196,101 +196,44 @@ namespace SplitterOverConveyor
 
         private static void ValidateBelt(PlayerAction_Build playerAction, Pose slotPose, EntityData entityData, out bool validBelt, out bool isOutput, out int beltSlot)
         {
+            //TODO: detect which belt slot to use
             beltSlot = -1;
             isOutput = false;
             validBelt = false;
 
-            //var beltGates = playerAction.GetLocalGates(entityData.id);
-            var beltPose = playerAction.GetObjectPose(entityData.id);
             var slotDirection = playerAction.previewPose.rotation * slotPose.forward;
 
-            var dotForward = 0.75f;
-            var dotBackward = -0.75f;
-            var forwardSlot = -1;
-            var backwardSlot = -1;
+            var belt = playerAction.factory.cargoTraffic.beltPool[entityData.beltId];
+            var cargoPath = playerAction.factory.cargoTraffic.GetCargoPath(belt.segPathId);
+            var beltInputRotation = cargoPath.pointRot[belt.segIndex];
+            var beltOutputRotation = cargoPath.pointRot[belt.segIndex + belt.segLength - 1];
 
-            for (var i = 0; i < playerAction.belt_slots.Length; i++)
-            {
-                var beltSlotPose = playerAction.belt_slots[i].GetTransformedBy(beltPose);
-                var dotResult = Vector3.Dot(slotDirection.normalized, beltSlotPose.forward.normalized);
-                if (dotResult > dotForward)
-                {
-                    dotForward = dotResult;
-                    forwardSlot = i;
-                }
-                if (dotResult < dotBackward)
-                {
-                    dotBackward = dotResult;
-                    beltSlot = backwardSlot = i;
-                }
-                playerAction.factory.ReadObjectConn(entityData.id, i, out var io, out var oi, out _);
-                InstanceLogger.LogWarning($"{i} {io} {oi} {dotResult}");
-            }
-            InstanceLogger.LogWarning($"{forwardSlot} {backwardSlot} {beltPose.rotation} {beltPose.forward}");
+            var beltIsStraight = Vector3.Dot(beltInputRotation * Vector3.forward, beltOutputRotation * Vector3.forward) > 0.5;
 
-            playerAction.factory.ReadObjectConn(entityData.id, backwardSlot, out var backwardIsOutput, out var backwardObjId, out _);
-            if (backwardObjId != 0)
+            if (beltIsStraight)
             {
-                validBelt = true;
-                isOutput = !backwardIsOutput;
-                return;
-            }
-
-            playerAction.factory.ReadObjectConn(entityData.id, forwardSlot, out var forwardIsOutput, out var forwardObjId, out _);
-            if (forwardObjId == 0)
-            {
-                return;
-            }
-
-            for (int index = 0; index < playerAction.belt_slots.Length; ++index)
-            {
-                if (index == forwardSlot || index == backwardSlot)
+                var dot = Vector3.Dot(beltInputRotation * Vector3.forward, slotDirection);
+                if (Math.Abs(dot) > 0.5F)
                 {
-                    continue;
-                }
-                playerAction.factory.ReadObjectConn(entityData.id, index, out _, out var otherObjId, out _);
-                if (otherObjId != 0)
-                {
+                    validBelt = true;
+                    isOutput = dot > 0.5F;
                     return;
                 }
+                return;
             }
 
-            validBelt = true;
-            isOutput = forwardIsOutput;
-
-            //var slotForward = playerAction.previewPose.rotation * slotPose.forward;
-            //var outputPose = playerAction.GetObjectPose(forwardObjId);
-            //var outputForward = (outputPose.position - entityData.pos).normalized;
-            //var dot = Vector3.Dot(slotForward, outputForward);
-            //if (dot > 0.5)
-            //{
-            //    validBelt = true;
-            //    isOutput = false;
-            //    return;
-            //}
-            //else if (dot < -0.5)
-            //{
-            //    validBelt = true;
-            //    isOutput = true;
-            //    return;
-            //}
-            //
-            //var inputPose = playerAction.GetObjectPose(backwardObjId);
-            //
-            //var inputForward = (inputPose.position - entityData.pos).normalized;
-            //dot = Vector3.Dot(slotForward, inputForward);
-            //if (dot > 0.5)
-            //{
-            //    validBelt = true;
-            //    isOutput = true;
-            //    return;
-            //}
-            //else if (dot < -0.5)
-            //{
-            //    validBelt = true;
-            //    isOutput = false;
-            //    return;
-            //}
+            if (Vector3.Dot(beltInputRotation * Vector3.forward, slotDirection) > 0.5F)
+            {
+                validBelt = true;
+                isOutput = true;
+                return;
+            }
+            if (Vector3.Dot(beltOutputRotation * Vector3.forward, slotDirection) < -0.5F)
+            {
+                validBelt = true;
+                isOutput = false;
+                return;
+            }
         }
 
 
@@ -314,20 +257,12 @@ namespace SplitterOverConveyor
             var castEntityData = playerAction.factory.GetEntityData(playerAction.castObjId);
 
             var overlapCount = Physics.OverlapBoxNonAlloc(buildCollider.pos, buildCollider.ext, playerAction._tmp_cols, buildCollider.q, layerMask, QueryTriggerInteraction.Collide);
-            //if (overlapCount == 0)
-            //{
-            //    return 0;
-            //}
             if (overlapCount > 4 + (middleBeltExists ? 1 : 0))
             {
                 return (int)EBuildCondition.Collide;
             }
 
             GetAdjacentBuildingsNonAlloc(playerAction, buildPreview, splitterAdjacentBuildings);
-            if (splitterAdjacentBuildings.Count(belt => belt.validBelt) + (middleBeltExists ? 1 : 0) > overlapCount)
-            {
-                return (int)EBuildCondition.Collide;
-            }
 
             var colliderIds = new int[overlapCount];
             for (var i = 0; i < overlapCount; i++)
