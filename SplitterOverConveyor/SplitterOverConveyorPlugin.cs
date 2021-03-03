@@ -96,16 +96,18 @@ namespace SplitterOverConveyor
             {
                 return;
             }
-            var middleBeltExists = playerAction.castObjId > 0;
-            if (middleBeltExists && !playerAction.ObjectIsBelt(playerAction.castObjId))
-            {
-                return;
-            }
+            
             
             GetAdjacentBuildingsNonAlloc(playerAction, buildPreview, splitterAdjacentBuildings);
-            if (middleBeltExists)
+            if (playerAction.castObjId != 0 && playerAction.ObjectIsBelt(playerAction.castObjId))
             {
                 playerAction.DoDestructObject(playerAction.castObjId, out _);
+            }
+
+            var topObjId = GetObjectAtTopSlot(playerAction, buildPreview);
+            if (topObjId != 0 && playerAction.ObjectIsBelt(topObjId))
+            {
+                playerAction.DoDestructObject(topObjId, out _);
             }
 
             for (var i = 0; i < 4; i++)
@@ -128,14 +130,60 @@ namespace SplitterOverConveyor
                     rot = prebuildData.rot * adjacentBuilding.slotPose.rotation,
                     rot2 = Quaternion.identity,
                 };
-            
-                var objId = -playerAction.factory.AddPrebuildDataWithComponents(connectionPrebuildData);
-                //TODO: 0 is not always output for belt, change slot. (should be fine for newly placed belts, needs testing)
-                InstanceLogger.LogWarning($"Slot {adjacentBuilding.splitterSlot} {adjacentBuilding.beltSlot}");
-                playerAction.factory.WriteObjectConn(buildPreview.objId, adjacentBuilding.splitterSlot, !adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 0 : 1);
 
-                //playerAction.factory.WriteObjectConn(adjacentBuilding.entityData.id, adjacentBuilding.beltSlot, adjacentBuilding.isOutput, objId, adjacentBuilding.isOutput ? 1 : 0);
+                var id = (int)adjacentBuilding.entityData.protoId;
+                var count = 1;
+                playerAction.player.package.TakeTailItems(ref id, ref count);
+                
+                var objId = -playerAction.factory.AddPrebuildDataWithComponents(connectionPrebuildData);
+
+                var otherBeltSlot = -1;
+                if (!adjacentBuilding.isOutput)
+                {
+                    otherBeltSlot = 0;
+                }
+                else
+                {
+                    for (var j = 1; j < 4; j++)
+                    {
+                        playerAction.factory.ReadObjectConn(adjacentBuilding.entityData.id, j, out _, out var otherObjId, out var otherSlot);
+                        if (otherObjId != 0)
+                        {
+                            otherBeltSlot = otherSlot;
+                            break;
+                        }
+                    }
+                }
+
+                playerAction.factory.WriteObjectConn(objId, adjacentBuilding.isOutput ? 1 : 0, !adjacentBuilding.isOutput, buildPreview.objId, adjacentBuilding.splitterSlot);
+                playerAction.factory.WriteObjectConn(objId, adjacentBuilding.isOutput ? 0 : 1, adjacentBuilding.isOutput, adjacentBuilding.entityData.id, otherBeltSlot);
             }
+        }
+
+        private static int GetObjectAtTopSlot(PlayerAction_Build playerAction, BuildPreview buildPreview)
+        {
+            var topPosition = playerAction.previewPose.position + playerAction.previewPose.rotation * (Vector3.up * PlanetGrid.kAltGrid);
+            var snappedPosition = playerAction.planetAux.Snap(topPosition, false, false);
+            var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPosition, 0.1F, playerAction._tmp_ids);
+            
+            if (count == 1 && playerAction._tmp_ids[0] != 0 && playerAction._tmp_ids[0] != buildPreview.objId)
+            {
+                return playerAction._tmp_ids[0];
+            }
+            
+            if (count == 2 && buildPreview.objId != 0)
+            {
+                if (Mathf.Abs(playerAction._tmp_ids[0]) == Mathf.Abs(buildPreview.objId))
+                {
+                    return playerAction._tmp_ids[1];
+                }
+                if (Mathf.Abs(playerAction._tmp_ids[1]) == Mathf.Abs(buildPreview.objId))
+                {
+                    return playerAction._tmp_ids[0];
+                }
+            }
+
+            return -1;
         }
 
         private static void GetAdjacentBuildingsNonAlloc(PlayerAction_Build playerAction, BuildPreview buildPreview, AdjacentBuilding[] splitterAdjacentBuildings)
@@ -150,11 +198,9 @@ namespace SplitterOverConveyor
                 var validBelt = false;
                 var isOutput = false;
                 var isBelt = false;
-                var beltSlot = -1;
 
                 var objId = 0;
-
-                if (count == 1 && playerAction._tmp_ids[0] > 0)
+                if (count == 1 && playerAction._tmp_ids[0] != 0)
                 {
                     objId = playerAction._tmp_ids[0];
                     
@@ -170,14 +216,13 @@ namespace SplitterOverConveyor
                         objId = playerAction._tmp_ids[0];
                     }
                 }
-                if (objId != 0)
+                if (objId > 0)
                 {
-                    //TODO objId can be < 0 which will throw an exception
                     entityData = playerAction.factory.GetEntityData(objId);
                     isBelt = playerAction.ObjectIsBelt(entityData.id);
                     if (isBelt)
                     {
-                        ValidateBelt(playerAction, slotPose, entityData, out validBelt, out isOutput, out beltSlot);
+                        ValidateBelt(playerAction, slotPose, entityData, out validBelt, out isOutput);
                     }
                 }
 
@@ -188,16 +233,13 @@ namespace SplitterOverConveyor
                     slotPose = slotPose,
                     isOutput = isOutput,
                     validBelt = validBelt,
-                    isBelt = isBelt,
-                    beltSlot = beltSlot
+                    isBelt = isBelt
                 };
             }
         }
 
-        private static void ValidateBelt(PlayerAction_Build playerAction, Pose slotPose, EntityData entityData, out bool validBelt, out bool isOutput, out int beltSlot)
+        private static void ValidateBelt(PlayerAction_Build playerAction, Pose slotPose, EntityData entityData, out bool validBelt, out bool isOutput)
         {
-            //TODO: detect which belt slot to use
-            beltSlot = -1;
             isOutput = false;
             validBelt = false;
 
@@ -239,25 +281,40 @@ namespace SplitterOverConveyor
 
         private static int CheckSplitterCollides(PlayerAction_Build playerAction, BuildPreview buildPreview, ColliderData buildCollider, int layerMask)
         {
-            if (playerAction.castObjId < 0)
-            {
-                return -1;
-            }
             if (!buildPreview.desc.isSplitter)
             {
                 return -1;
             }
 
-            var middleBeltExists = playerAction.castObjId > 0;
+            if (playerAction.castObjId < 0)
+            {
+                return -1;
+            }
 
+            var middleBeltExists = playerAction.castObjId > 0;
             if (middleBeltExists && !playerAction.ObjectIsBelt(playerAction.castObjId))
             {
                 return -1;
             }
-            var castEntityData = playerAction.factory.GetEntityData(playerAction.castObjId);
+            var middleBeltData = playerAction.factory.GetEntityData(playerAction.castObjId);
+            
+            //TODO: maybe make this check only for vertical splitters
+            var topBeltId = GetObjectAtTopSlot(playerAction, buildPreview);
+            if (topBeltId < 0)
+            {
+                return -1;
+            }
+            
+            var topBeltExists = topBeltId > 0;
+            if (topBeltExists && !playerAction.ObjectIsBelt(topBeltId))
+            {
+                return -1;
+            }
+            var topBeltData = playerAction.factory.GetEntityData(topBeltId);
+
 
             var overlapCount = Physics.OverlapBoxNonAlloc(buildCollider.pos, buildCollider.ext, playerAction._tmp_cols, buildCollider.q, layerMask, QueryTriggerInteraction.Collide);
-            if (overlapCount > 4 + (middleBeltExists ? 1 : 0))
+            if (overlapCount > 4 + (middleBeltExists ? 1 : 0) + (topBeltExists ? 1 : 0))
             {
                 return (int)EBuildCondition.Collide;
             }
@@ -276,7 +333,11 @@ namespace SplitterOverConveyor
                 {
                     continue;
                 }
-                if (middleBeltExists && colliderIds[i] == castEntityData.colliderId)
+                if (middleBeltExists && colliderIds[i] == middleBeltData.colliderId)
+                {
+                    continue;
+                }
+                if (topBeltExists && colliderIds[i] == topBeltData.colliderId)
                 {
                     continue;
                 }
@@ -292,14 +353,17 @@ namespace SplitterOverConveyor
                     continue;
                 }
 
-                if (!adjacentBuilding.isBelt && colliderIds.Contains(adjacentBuilding.entityData.colliderId))
+                if (colliderIds.Contains(adjacentBuilding.entityData.colliderId))
                 {
-                    return (int)EBuildCondition.Collide;
-                }
+                    if (!adjacentBuilding.isBelt)
+                    {
+                        return (int)EBuildCondition.Collide;
+                    }
 
-                if (!adjacentBuilding.validBelt)
-                {
-                    return (int)EBuildCondition.BeltCannotConnectToBuilding;
+                    if (!adjacentBuilding.validBelt)
+                    {
+                        return (int)EBuildCondition.Collide;
+                    }
                 }
 
                 if (requiredBelts.TryGetValue(adjacentBuilding.entityData.protoId, out var count))
@@ -314,9 +378,16 @@ namespace SplitterOverConveyor
 
             if (middleBeltExists)
             {
-                if (requiredBelts.TryGetValue(castEntityData.protoId, out var count))
+                if (requiredBelts.TryGetValue(middleBeltData.protoId, out var count))
                 {
-                    requiredBelts[castEntityData.protoId] = count - 1;
+                    requiredBelts[middleBeltData.protoId] = count - 1;
+                }
+            }
+            if (topBeltExists)
+            {
+                if (requiredBelts.TryGetValue(topBeltData.protoId, out var count))
+                {
+                    requiredBelts[topBeltData.protoId] = count - 1;
                 }
             }
 

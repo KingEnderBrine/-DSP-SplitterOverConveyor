@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace SplitterOverConveyor
 {
@@ -13,7 +9,6 @@ namespace SplitterOverConveyor
         public Pose slotPose;
         public bool isOutput;
         public bool isBelt;
-        public int beltSlot;
         public EntityData entityData;
     }
 }
