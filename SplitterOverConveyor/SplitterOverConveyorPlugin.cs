@@ -97,17 +97,19 @@ namespace SplitterOverConveyor
                 return;
             }
             
-            
             GetAdjacentBuildingsNonAlloc(playerAction, buildPreview, splitterAdjacentBuildings);
             if (playerAction.castObjId != 0 && playerAction.ObjectIsBelt(playerAction.castObjId))
             {
                 playerAction.DoDestructObject(playerAction.castObjId, out _);
             }
 
-            var topObjId = GetObjectAtTopSlot(playerAction, buildPreview);
-            if (topObjId != 0 && playerAction.ObjectIsBelt(topObjId))
+            if (IsVerticalSplitter(buildPreview.desc))
             {
-                playerAction.DoDestructObject(topObjId, out _);
+                var topObjId = GetObjectAtTopSlot(playerAction, buildPreview);
+                if (topObjId != 0 && playerAction.ObjectIsBelt(topObjId))
+                {
+                    playerAction.DoDestructObject(topObjId, out _);
+                }
             }
 
             for (var i = 0; i < 4; i++)
@@ -183,7 +185,7 @@ namespace SplitterOverConveyor
                 }
             }
 
-            return -1;
+            return 0;
         }
 
         private static void GetAdjacentBuildingsNonAlloc(PlayerAction_Build playerAction, BuildPreview buildPreview, AdjacentBuilding[] splitterAdjacentBuildings)
@@ -278,6 +280,25 @@ namespace SplitterOverConveyor
             }
         }
 
+        private static bool IsVerticalSplitter(PrefabDesc prefabDesc)
+        {
+            if (prefabDesc == null || !prefabDesc.isSplitter)
+            {
+                return false;
+            }
+
+            var poses = prefabDesc.slotPoses;
+            var height = poses[0].position.y;
+            for (var i = 1; i < poses.Length; i++)
+            {
+                if (Mathf.Abs(poses[i].position.y - height) > 0.00001F)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private static int CheckSplitterCollides(PlayerAction_Build playerAction, BuildPreview buildPreview, ColliderData buildCollider, int layerMask)
         {
@@ -298,13 +319,13 @@ namespace SplitterOverConveyor
             }
             var middleBeltData = playerAction.factory.GetEntityData(playerAction.castObjId);
             
-            //TODO: maybe make this check only for vertical splitters
             var topBeltId = GetObjectAtTopSlot(playerAction, buildPreview);
             if (topBeltId < 0)
             {
                 return -1;
             }
-            
+
+            var isVerticalSplitter = IsVerticalSplitter(buildPreview.desc);
             var topBeltExists = topBeltId > 0;
             if (topBeltExists && !playerAction.ObjectIsBelt(topBeltId))
             {
@@ -314,7 +335,7 @@ namespace SplitterOverConveyor
 
 
             var overlapCount = Physics.OverlapBoxNonAlloc(buildCollider.pos, buildCollider.ext, playerAction._tmp_cols, buildCollider.q, layerMask, QueryTriggerInteraction.Collide);
-            if (overlapCount > 4 + (middleBeltExists ? 1 : 0) + (topBeltExists ? 1 : 0))
+            if (overlapCount > 4 + (middleBeltExists ? 1 : 0) + (isVerticalSplitter && topBeltExists ? 1 : 0))
             {
                 return (int)EBuildCondition.Collide;
             }
@@ -337,7 +358,7 @@ namespace SplitterOverConveyor
                 {
                     continue;
                 }
-                if (topBeltExists && colliderIds[i] == topBeltData.colliderId)
+                if (isVerticalSplitter && topBeltExists && colliderIds[i] == topBeltData.colliderId)
                 {
                     continue;
                 }
@@ -383,7 +404,7 @@ namespace SplitterOverConveyor
                     requiredBelts[middleBeltData.protoId] = count - 1;
                 }
             }
-            if (topBeltExists)
+            if (isVerticalSplitter && topBeltExists)
             {
                 if (requiredBelts.TryGetValue(topBeltData.protoId, out var count))
                 {
