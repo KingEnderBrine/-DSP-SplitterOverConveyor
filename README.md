@@ -36,6 +36,10 @@ g - optional belt on the ground.
 a/g - can have both
 
 # Changelog
+**2.0.1**
+
+* Updated for `0.6.17.5932` game version
+
 **2.0.0**
 
 * Reworked belt detection. No more need in central belt to connect everything.

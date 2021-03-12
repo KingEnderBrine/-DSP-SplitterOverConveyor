@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace SplitterOverConveyor
 {
-    [BepInPlugin(GUID, "Splitter Over Conveyor", "2.0.0")]
+    [BepInPlugin(GUID, "Splitter Over Conveyor", "2.0.1")]
     public class SplitterOverConveyorPlugin : BaseUnityPlugin
     {
         public const string GUID = "KingEnderBrine.SplitterOverConveyor";
@@ -166,7 +166,7 @@ namespace SplitterOverConveyor
         {
             var topPosition = playerAction.previewPose.position + playerAction.previewPose.rotation * (Vector3.up * PlanetGrid.kAltGrid);
             var snappedPosition = playerAction.planetAux.Snap(topPosition, false, false);
-            var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPosition, 0.1F, playerAction._tmp_ids);
+            var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPosition, 0.1F, playerAction._tmp_ids, false);
             
             if (count == 1 && playerAction._tmp_ids[0] != 0 && playerAction._tmp_ids[0] != buildPreview.objId)
             {
@@ -195,7 +195,7 @@ namespace SplitterOverConveyor
             {
                 var slotPose = slotPoses[i];
                 var snappedPos = playerAction.planetAux.Snap(playerAction.previewPose.position + playerAction.previewPose.rotation * (slotPose.position + slotPose.forward * PlanetGrid.kAltGrid), false, false);
-                var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPos, 0.1F, playerAction._tmp_ids);
+                var count = playerAction.nearcdLogic.GetBuildingsInAreaNonAlloc(snappedPos, 0.1F, playerAction._tmp_ids, false);
                 var entityData = EntityData.Null;
                 var validBelt = false;
                 var isOutput = false;
