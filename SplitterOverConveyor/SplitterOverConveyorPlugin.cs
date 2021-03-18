@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace SplitterOverConveyor
 {
-    [BepInPlugin(GUID, "Splitter Over Conveyor", "2.0.1")]
+    [BepInPlugin(GUID, "Splitter Over Conveyor", "2.0.2")]
     public class SplitterOverConveyorPlugin : BaseUnityPlugin
     {
         public const string GUID = "KingEnderBrine.SplitterOverConveyor";
@@ -148,10 +148,10 @@ namespace SplitterOverConveyor
                 {
                     for (var j = 1; j < 4; j++)
                     {
-                        playerAction.factory.ReadObjectConn(adjacentBuilding.entityData.id, j, out _, out var otherObjId, out var otherSlot);
-                        if (otherObjId != 0)
+                        playerAction.factory.ReadObjectConn(adjacentBuilding.entityData.id, j, out _, out var otherObjId, out _);
+                        if (otherObjId == 0)
                         {
-                            otherBeltSlot = otherSlot;
+                            otherBeltSlot = j;
                             break;
                         }
                     }
