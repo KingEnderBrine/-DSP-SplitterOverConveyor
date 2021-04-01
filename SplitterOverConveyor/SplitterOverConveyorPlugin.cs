@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace SplitterOverConveyor
 {
-    [BepInPlugin(GUID, "Splitter Over Conveyor", "2.0.2")]
+    [BepInPlugin(GUID, "Splitter Over Conveyor", "2.0.3")]
     public class SplitterOverConveyorPlugin : BaseUnityPlugin
     {
         public const string GUID = "KingEnderBrine.SplitterOverConveyor";
@@ -100,7 +100,7 @@ namespace SplitterOverConveyor
             GetAdjacentBuildingsNonAlloc(playerAction, buildPreview, splitterAdjacentBuildings);
             if (playerAction.castObjId != 0 && playerAction.ObjectIsBelt(playerAction.castObjId))
             {
-                playerAction.DoDestructObject(playerAction.castObjId, out _);
+                playerAction.DoDestructObject(playerAction.castObjId);
             }
 
             if (IsVerticalSplitter(buildPreview.desc))
@@ -108,7 +108,7 @@ namespace SplitterOverConveyor
                 var topObjId = GetObjectAtTopSlot(playerAction, buildPreview);
                 if (topObjId != 0 && playerAction.ObjectIsBelt(topObjId))
                 {
-                    playerAction.DoDestructObject(topObjId, out _);
+                    playerAction.DoDestructObject(topObjId);
                 }
             }
 

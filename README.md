@@ -36,6 +36,10 @@ g - optional belt on the ground.
 a/g - can have both
 
 # Changelog
+**2.0.3**
+
+* Updated for `0.6.17.6112` game version
+
 **2.0.2**
 
 * Fixed an issue when some automatically placed belts couldn't be destroyed/updated in chain with other belts (Doesn't affect already placed belts).
